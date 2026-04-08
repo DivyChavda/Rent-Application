@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Calculator, Zap, Home, FileText, Receipt, Download, Save } from 'lucide-react';
 
-const API_URL = 'http://localhost:5000/api/billing';
+const API_URL = 'https://rent-application-rcud-backend.vercel.app/api/billing';
 
 // Type definitions
 interface ElectricityBill {

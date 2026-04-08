@@ -1,4 +1,3 @@
-import React from 'react';
 import RentElectricityCalculator from './pages/rentElectricityCalculator';
 
 function App() {

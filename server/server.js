@@ -9,36 +9,96 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
-// MongoDB Connection
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/rent-calculator';
+const MONGODB_URI = process.env.MONGODB_URI;
 
-mongoose.connect(MONGODB_URI)
-    .then(() => console.log('✓ Connected to MongoDB'))
-    .catch((err) => console.error('✗ MongoDB connection error:', err));
+if (!MONGODB_URI) {
+    throw new Error('MONGODB_URI environment variable is not defined');
+}
+
+// MongoDB connection cache for Vercel/serverless
+let cached = global.mongoose;
+
+if (!cached) {
+    cached = global.mongoose = {
+        conn: null,
+        promise: null
+    };
+}
+
+const connectDB = async () => {
+    if (cached.conn) {
+        return cached.conn;
+    }
+
+    if (!cached.promise) {
+        console.log('Connecting to MongoDB...');
+
+        cached.promise = mongoose.connect(MONGODB_URI, {
+            serverSelectionTimeoutMS: 10000,
+            bufferCommands: false
+        });
+    }
+
+    try {
+        cached.conn = await cached.promise;
+        console.log('✓ Connected to MongoDB');
+
+        return cached.conn;
+    } catch (error) {
+        cached.promise = null;
+        console.error('✗ MongoDB connection error:', error);
+        throw error;
+    }
+};
 
 // Routes
-app.use('/api/billing', billingRoutes);
+app.use('/api/billing', async (req, res, next) => {
+    try {
+        await connectDB();
+        next();
+    } catch (error) {
+        res.status(500).json({
+            message: 'Database connection failed',
+            error: error.message
+        });
+    }
+}, billingRoutes);
 
 // Health check
-app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', message: 'Server is running' });
+app.get('/api/health', async (req, res) => {
+    try {
+        await connectDB();
+
+        res.json({
+            status: 'ok',
+            database: 'connected',
+            message: 'Server is running'
+        });
+    } catch (error) {
+        res.status(500).json({
+            status: 'error',
+            database: 'disconnected',
+            error: error.message
+        });
+    }
 });
 
 // Root route
 app.get('/', (req, res) => {
-    res.json({ message: 'Rent Calculator API', version: '1.0.0' });
+    res.json({
+        message: 'Rent Calculator API',
+        version: '1.0.0'
+    });
 });
 
-// Only start server if not in Vercel environment
+// Local development only
 if (process.env.NODE_ENV !== 'production') {
     app.listen(PORT, () => {
         console.log(`✓ Server running on port ${PORT}`);
     });
 }
 
-// Export for Vercel
 export default app;
